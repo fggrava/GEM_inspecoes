@@ -1,0 +1,1 @@
+import {NextResponse} from "next/server";import {session} from "../../../lib/auth";export async function GET(){const s=await session();return NextResponse.json({user:s||null},{status:s?200:401})}
