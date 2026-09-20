@@ -24,6 +24,13 @@ export async function POST(req){
   const u=await requireUser();
   if(u.role!=="INSPECTOR")return NextResponse.json({error:"Perfil PCM não realiza lançamentos"},{status:403});
   const x=await req.json();
+  const clientRecordId=String(x.client_record_id||"").trim()||null;
+
+  if(clientRecordId){
+   const existing=await client.query("SELECT * FROM inspections WHERE client_record_id=$1",[clientRecordId]);
+   if(existing.rows[0])return NextResponse.json({...existing.rows[0],duplicate:true},{status:200});
+  }
+
   const isRevision=x.reason==="Revisão de Plano";
   const isInspection=x.reason==="Inspeção";
   if(!isRevision&&!isInspection)return NextResponse.json({error:"Motivo inválido."},{status:400});
@@ -57,10 +64,10 @@ export async function POST(req){
   await client.query("BEGIN");
   const q=await client.query(`INSERT INTO inspections(
     inspection_date,office_id,user_id,reason,plan_no,order_no,location,equipment_no,operation,suboperation,description,
-    needs_part,part_description,stock_status,part_code,suboperation_count
-   ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,NULL,$10,$11,$12,$13,$14,$15) RETURNING *`,[
+    needs_part,part_description,stock_status,part_code,suboperation_count,client_record_id
+   ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,NULL,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,[
     x.inspection_date,u.office_id,u.id,x.reason,x.plan_no||null,x.order_no||null,x.location,x.equipment_no,operation,x.description,
-    needsPart,partDescription,stockStatus,partCode,suboperationCount
+    needsPart,partDescription,stockStatus,partCode,suboperationCount,clientRecordId
   ]);
   const inspection=q.rows[0];
   if(isRevision){
@@ -72,6 +79,11 @@ export async function POST(req){
   return NextResponse.json(inspection,{status:201});
  }catch(e){
   try{await client.query("ROLLBACK")}catch{}
+  if(e.code==="23505"&&String(e.constraint||"").includes("client_record")){
+   const body=await req.clone().json().catch(()=>({}));
+   const existing=await db.query("SELECT * FROM inspections WHERE client_record_id=$1",[body.client_record_id]);
+   if(existing.rows[0])return NextResponse.json({...existing.rows[0],duplicate:true},{status:200});
+  }
   return NextResponse.json({error:e.message},{status:e.message==="UNAUTHORIZED"?401:500});
  }finally{client.release()}
 }
