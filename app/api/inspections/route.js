@@ -1,4 +1,65 @@
-import {NextResponse} from "next/server";import {db,ensureSchema} from "../../../lib/db";import {requireUser} from "../../../lib/auth";
-export async function GET(req){try{await ensureSchema();const u=await requireUser();const url=new URL(req.url);const search=url.searchParams.get("q")||"";let args=[`%${search}%`],where=`AND (i.equipment_no ILIKE $1 OR i.location ILIKE $1 OR COALESCE(i.order_no,'') ILIKE $1)`;if(u.role==="INSPECTOR"){args.push(u.office_id);where+=` AND i.office_id=$2`}const q=await db.query(`SELECT i.*,o.name office,u.name inspector FROM inspections i JOIN offices o ON o.id=i.office_id JOIN users u ON u.id=i.user_id WHERE 1=1 ${where} ORDER BY i.created_at DESC LIMIT 500`,args);return NextResponse.json(q.rows)}catch(e){return NextResponse.json({error:e.message},{status:e.message==="UNAUTHORIZED"?401:500})}}
-export async function POST(req){try{await ensureSchema();const u=await requireUser();if(u.role!=="INSPECTOR")return NextResponse.json({error:"Perfil PCM não realiza lançamentos"},{status:403});const x=await req.json();const q=await db.query(`INSERT INTO inspections(inspection_date,office_id,user_id,reason,plan_no,order_no,location,equipment_no,operation,suboperation,description) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,[x.inspection_date,u.office_id,u.id,x.reason,x.plan_no||null,x.order_no||null,x.location,x.equipment_no,x.operation,x.suboperation||null,x.description]);return NextResponse.json(q.rows[0],{status:201})}catch(e){return NextResponse.json({error:e.message},{status:e.message==="UNAUTHORIZED"?401:500})}}
-export async function PATCH(req){try{await ensureSchema();const u=await requireUser();const x=await req.json();const old=await db.query("SELECT * FROM inspections WHERE id=$1",[x.id]);if(!old.rows[0])return NextResponse.json({error:"Registro não encontrado"},{status:404});if(u.role==="INSPECTOR"&&Number(old.rows[0].office_id)!==Number(u.office_id))return NextResponse.json({error:"Sem permissão"},{status:403});await db.query("BEGIN");await db.query("INSERT INTO inspection_revisions(inspection_id,user_id,old_description,new_description) VALUES($1,$2,$3,$4)",[x.id,u.id,old.rows[0].description,x.description]);await db.query("UPDATE inspections SET description=$1,updated_at=NOW() WHERE id=$2",[x.description,x.id]);await db.query("COMMIT");return NextResponse.json({ok:true})}catch(e){try{await db.query("ROLLBACK")}catch{}return NextResponse.json({error:e.message},{status:500})}}
+import {NextResponse} from "next/server";
+import {db,ensureSchema} from "../../../lib/db";
+import {requireUser} from "../../../lib/auth";
+
+export async function GET(req){
+ try{
+  await ensureSchema();
+  const u=await requireUser();
+  const url=new URL(req.url);
+  const search=url.searchParams.get("q")||"";
+  let args=[`%${search}%`],where=`AND (i.equipment_no ILIKE $1 OR i.location ILIKE $1 OR COALESCE(i.order_no,'') ILIKE $1)`;
+  if(u.role==="INSPECTOR"){args.push(u.office_id);where+=` AND i.office_id=$2`}
+  const q=await db.query(`SELECT i.*,o.name office,u.name inspector FROM inspections i JOIN offices o ON o.id=i.office_id JOIN users u ON u.id=i.user_id WHERE 1=1 ${where} ORDER BY i.created_at DESC LIMIT 500`,args);
+  return NextResponse.json(q.rows);
+ }catch(e){return NextResponse.json({error:e.message},{status:e.message==="UNAUTHORIZED"?401:500})}
+}
+
+export async function POST(req){
+ try{
+  await ensureSchema();
+  const u=await requireUser();
+  if(u.role!=="INSPECTOR")return NextResponse.json({error:"Perfil PCM não realiza lançamentos"},{status:403});
+  const x=await req.json();
+  const q=await db.query(`INSERT INTO inspections(inspection_date,office_id,user_id,reason,plan_no,order_no,location,equipment_no,operation,suboperation,description) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,[x.inspection_date,u.office_id,u.id,x.reason,x.plan_no||null,x.order_no||null,x.location,x.equipment_no,x.operation,x.suboperation||null,x.description]);
+  return NextResponse.json(q.rows[0],{status:201});
+ }catch(e){return NextResponse.json({error:e.message},{status:e.message==="UNAUTHORIZED"?401:500})}
+}
+
+export async function PATCH(req){
+ const client=await db.connect();
+ try{
+  await ensureSchema();
+  const u=await requireUser();
+  const x=await req.json();
+  const old=await client.query("SELECT * FROM inspections WHERE id=$1",[x.id]);
+  if(!old.rows[0])return NextResponse.json({error:"Registro não encontrado"},{status:404});
+  if(u.role==="INSPECTOR"&&Number(old.rows[0].office_id)!==Number(u.office_id))return NextResponse.json({error:"Sem permissão"},{status:403});
+  await client.query("BEGIN");
+  await client.query("INSERT INTO inspection_revisions(inspection_id,user_id,old_description,new_description) VALUES($1,$2,$3,$4)",[x.id,u.id,old.rows[0].description,x.description]);
+  await client.query("UPDATE inspections SET description=$1,updated_at=NOW() WHERE id=$2",[x.description,x.id]);
+  await client.query("COMMIT");
+  return NextResponse.json({ok:true});
+ }catch(e){
+  try{await client.query("ROLLBACK")}catch{}
+  return NextResponse.json({error:e.message},{status:e.message==="UNAUTHORIZED"?401:500});
+ }finally{client.release()}
+}
+
+export async function DELETE(req){
+ try{
+  await ensureSchema();
+  const u=await requireUser();
+  if(u.role!=="PCM")return NextResponse.json({error:"Apenas o PCM pode excluir registros do histórico."},{status:403});
+  const x=await req.json();
+  const id=Number(x.id);
+  if(!id)return NextResponse.json({error:"Registro inválido."},{status:400});
+  const current=await db.query("SELECT id FROM inspections WHERE id=$1",[id]);
+  if(!current.rows[0])return NextResponse.json({error:"Registro não encontrado."},{status:404});
+  await db.query("DELETE FROM inspections WHERE id=$1",[id]);
+  return NextResponse.json({ok:true});
+ }catch(e){
+  const status=e.message==="UNAUTHORIZED"?401:500;
+  return NextResponse.json({error:e.message},{status});
+ }
+}
