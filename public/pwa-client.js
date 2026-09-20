@@ -47,6 +47,8 @@
   function jsonResponse(obj,status=200){return new Response(JSON.stringify(obj),{status,headers:{'Content-Type':'application/json'}})}
   function sameApi(input,path){try{const u=new URL(typeof input==='string'?input:input.url,location.origin);return u.origin===location.origin&&u.pathname===path}catch{return false}}
   function bodyOf(init){try{return JSON.parse(init?.body||'{}')}catch{return {}}}
+  function isStandalone(){return window.matchMedia?.('(display-mode: standalone)').matches||window.navigator.standalone===true}
+  function isIOS(){return /iphone|ipad|ipod/i.test(navigator.userAgent)}
   async function currentProfile(){return await metaGet('profile')}
   async function queueCount(){return (await queueAll()).length}
 
@@ -75,6 +77,35 @@
     box.classList.add('show');
     clearTimeout(statusTimer);
     statusTimer=setTimeout(()=>box.classList.remove('show'),5000);
+  }
+
+  function showToast(text,isError=false){
+    let t=document.getElementById('gem-pwa-toast');
+    if(!t){t=document.createElement('div');t.id='gem-pwa-toast';document.body.appendChild(t)}
+    t.className='gemPwaToast'+(isError?' error':'');
+    t.textContent=text;
+    t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer=setTimeout(()=>t.classList.remove('show'),5000);
+  }
+
+  async function triggerInstall(){
+    if(isStandalone()){
+      showToast('O GEM Inspeções já está instalado neste aparelho.');
+      return;
+    }
+    if(installPrompt){
+      installPrompt.prompt();
+      const choice=await installPrompt.userChoice.catch(()=>null);
+      if(choice?.outcome==='accepted')installPrompt=null;
+      await renderMiniControls();
+      return;
+    }
+    if(isIOS()){
+      showToast('No Safari, toque em Compartilhar e escolha “Adicionar à Tela de Início”.');
+    }else{
+      showToast('No navegador, toque no menu ⋮ e escolha “Instalar app” ou “Adicionar à tela inicial”.');
+    }
   }
 
   async function renderMiniControls(){
@@ -106,33 +137,19 @@
       syncBtn.classList.toggle('syncing',syncing);
     }else syncBtn?.remove();
 
-    if(installPrompt){
+    if(!isStandalone()){
       if(!installBtn){
         installBtn=document.createElement('button');
         installBtn.id='gem-pwa-install';
         installBtn.className='gemPwaInstallChip';
         installBtn.type='button';
         installBtn.textContent='Instalar app';
-        installBtn.addEventListener('click',async()=>{
-          if(!installPrompt)return;
-          installPrompt.prompt();
-          await installPrompt.userChoice;
-          installPrompt=null;
-          renderMiniControls();
-        });
+        installBtn.addEventListener('click',triggerInstall);
         document.body.appendChild(installBtn);
       }
+      installBtn.classList.toggle('ready',!!installPrompt);
+      installBtn.title=installPrompt?'Instalar GEM Inspeções':'Ver instruções de instalação';
     }else installBtn?.remove();
-  }
-
-  function showToast(text,isError=false){
-    let t=document.getElementById('gem-pwa-toast');
-    if(!t){t=document.createElement('div');t.id='gem-pwa-toast';document.body.appendChild(t)}
-    t.className='gemPwaToast'+(isError?' error':'');
-    t.textContent=text;
-    t.classList.add('show');
-    clearTimeout(t._timer);
-    t._timer=setTimeout(()=>t.classList.remove('show'),5000);
   }
 
   async function enqueue(payload){
@@ -264,6 +281,7 @@
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')syncQueue('visible')});
   window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;renderMiniControls()});
   window.addEventListener('appinstalled',()=>{installPrompt=null;renderMiniControls();showToast('GEM Inspeções instalado no dispositivo.')});
+  window.matchMedia?.('(display-mode: standalone)').addEventListener?.('change',renderMiniControls);
   if('serviceWorker'in navigator)navigator.serviceWorker.addEventListener('message',e=>{if(e.data?.type==='GEM_SYNC')syncQueue('background')});
 
   async function start(){
