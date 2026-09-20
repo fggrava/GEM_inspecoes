@@ -17,5 +17,5 @@ export const viewport={
 };
 
 export default function RootLayout({children}){
-  return <html lang="pt-BR"><body>{children}<script src="/pwa-client.js" defer></script></body></html>
+  return <html lang="pt-BR"><body>{children}<script src="/pwa-client.js" defer></script><script src="/pwa-feedback.js" defer></script></body></html>
 }
