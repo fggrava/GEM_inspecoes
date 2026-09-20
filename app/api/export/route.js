@@ -27,7 +27,12 @@ export async function GET(){
         i.location "Local/Linha",
         i.equipment_no "Nº Equipamento",
         i.operation "Operação",
-        i.suboperation "Sub-operação",
+        i.suboperation_count "Qtd. Sub-operações",
+        COALESCE((SELECT string_agg(s.sequence||' - '||s.description, E'\n' ORDER BY s.sequence) FROM inspection_suboperations s WHERE s.inspection_id=i.id),'') "Sub-operações",
+        CASE WHEN i.needs_part IS TRUE THEN 'Sim' WHEN i.needs_part IS FALSE THEN 'Não' ELSE '' END "Necessita de Peça",
+        i.part_description "Descrição da Peça",
+        i.stock_status "Status no Almoxerifado",
+        i.part_code "Código da Peça",
         i.description "Descrição",
         i.status "Status",
         usr.name "Inspetor"
@@ -43,16 +48,10 @@ export async function GET(){
       Data:r.Data instanceof Date ? r.Data.toISOString().slice(0,10) : String(r.Data||"").slice(0,10)
     }));
 
+    const headers=["Data","Oficina","Motivo","Nº Plano","Nº Ordem","Local/Linha","Nº Equipamento","Operação","Qtd. Sub-operações","Sub-operações","Necessita de Peça","Descrição da Peça","Status no Almoxerifado","Código da Peça","Descrição","Status","Inspetor"];
     const wb=XLSX.utils.book_new();
-    const ws=rows.length
-      ? XLSX.utils.json_to_sheet(rows)
-      : XLSX.utils.aoa_to_sheet([["Data","Oficina","Motivo","Nº Plano","Nº Ordem","Local/Linha","Nº Equipamento","Operação","Sub-operação","Descrição","Status","Inspetor"]]);
-
-    ws["!cols"]=[
-      {wch:12},{wch:24},{wch:20},{wch:14},{wch:14},{wch:24},
-      {wch:18},{wch:24},{wch:24},{wch:60},{wch:14},{wch:24}
-    ];
-
+    const ws=rows.length ? XLSX.utils.json_to_sheet(rows) : XLSX.utils.aoa_to_sheet([headers]);
+    ws["!cols"]=[{wch:12},{wch:22},{wch:20},{wch:14},{wch:14},{wch:24},{wch:18},{wch:24},{wch:18},{wch:45},{wch:18},{wch:32},{wch:24},{wch:18},{wch:60},{wch:14},{wch:24}];
     XLSX.utils.book_append_sheet(wb,ws,"Inspeções");
     const buf=XLSX.write(wb,{type:"buffer",bookType:"xlsx"});
 
