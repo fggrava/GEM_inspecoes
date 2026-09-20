@@ -1,0 +1,26 @@
+{
+  "name": "GEM Inspeções",
+  "short_name": "GEM Inspeções",
+  "description": "Aplicação de inspeções de campo da Gestão Estratégica de Manutenção",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f7f6f4",
+  "theme_color": "#6a3028",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/gem-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/gem-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
