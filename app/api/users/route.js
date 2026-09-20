@@ -91,3 +91,26 @@ export async function PATCH(req){
     return NextResponse.json({error:e.message},{status});
   }
 }
+
+export async function DELETE(req){
+  try{
+    await ensureSchema();
+    await requirePCM();
+    const x=await req.json();
+    const id=Number(x.id);
+    if(!id) return NextResponse.json({error:"Inspetor inválido."},{status:400});
+    const current=await db.query("SELECT id,name,role FROM users WHERE id=$1",[id]);
+    if(!current.rows[0]||current.rows[0].role!=="INSPECTOR") return NextResponse.json({error:"Inspetor não encontrado."},{status:404});
+    const usage=await db.query(`SELECT
+      (SELECT COUNT(*)::int FROM inspections WHERE user_id=$1) inspections,
+      (SELECT COUNT(*)::int FROM inspection_revisions WHERE user_id=$1) revisions`,[id]);
+    if(usage.rows[0].inspections>0||usage.rows[0].revisions>0){
+      return NextResponse.json({error:"Este inspetor possui histórico de inspeções/revisões e não pode ser excluído. Desative o usuário para preservar a rastreabilidade."},{status:409});
+    }
+    await db.query("DELETE FROM users WHERE id=$1",[id]);
+    return NextResponse.json({ok:true});
+  }catch(e){
+    const status=e.message==="UNAUTHORIZED"?401:e.message==="FORBIDDEN"?403:500;
+    return NextResponse.json({error:e.message},{status});
+  }
+}
