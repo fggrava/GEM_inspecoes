@@ -37,7 +37,7 @@ export async function POST(req){
     const password=String(x.password||"");
     const officeId=Number(x.office_id);
     if(name.length<3) return NextResponse.json({error:"Informe o nome do inspetor."},{status:400});
-    if(!/^\S+@\S+\.\S+$/.test(email)) return NextResponse.json({error:"Informe um e-mail válido."},{status:400});
+    if(!/^\S+@\S+$/.test(email)) return NextResponse.json({error:"Informe um usuário no formato nome@setor, por exemplo marcelo@inspetor."},{status:400});
     if(password.length<8) return NextResponse.json({error:"A senha deve ter pelo menos 8 caracteres."},{status:400});
     const office=await db.query("SELECT id FROM offices WHERE id=$1",[officeId]);
     if(!office.rows[0]) return NextResponse.json({error:"Oficina inválida."},{status:400});
@@ -47,7 +47,7 @@ export async function POST(req){
                             RETURNING id,name,email,office_id,active`,[name,email,hash,officeId]);
     return NextResponse.json(q.rows[0],{status:201});
   }catch(e){
-    if(e.code==="23505") return NextResponse.json({error:"Já existe um usuário com este e-mail."},{status:409});
+    if(e.code==="23505") return NextResponse.json({error:"Já existe um usuário com este e-mail/identificador."},{status:409});
     const status=e.message==="UNAUTHORIZED"?401:e.message==="FORBIDDEN"?403:500;
     return NextResponse.json({error:e.message},{status});
   }
